@@ -1,56 +1,70 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { useAtom } from 'jotai';
+import isEqual from 'lodash/isEqual';
 import { useRecoilState } from 'recoil';
-import { Constants } from 'librechat-data-provider';
-import { ephemeralAgentByConvoId, mcpPinnedAtom } from '~/store';
-import { useGetStartupConfig } from '~/data-provider';
+import { Constants, LocalStorageKeys } from 'librechat-data-provider';
+import { ephemeralAgentByConvoId, mcpValuesAtomFamily, mcpPinnedAtom } from '~/store';
+import { setTimestamp } from '~/utils/timestamps';
+import { MCPServerDefinition } from './useMCPServerManager';
 
-export function useMCPSelect({ conversationId }: { conversationId?: string | null }) {
+export function useMCPSelect({
+  conversationId,
+  servers,
+}: {
+  conversationId?: string | null;
+  servers: MCPServerDefinition[];
+}) {
   const key = conversationId ?? Constants.NEW_CONVO;
+  const configuredServers = useMemo(() => {
+    return new Set(servers?.map((s) => s.serverName));
+  }, [servers]);
 
-  const { data: startupConfig } = useGetStartupConfig();
   const [isPinned, setIsPinned] = useAtom(mcpPinnedAtom);
-  const [, setEphemeralAgent] = useRecoilState(ephemeralAgentByConvoId(key));
+  const [mcpValues, setMCPValuesRaw] = useAtom(mcpValuesAtomFamily(key));
+  const [ephemeralAgent, setEphemeralAgent] = useRecoilState(ephemeralAgentByConvoId(key));
 
-  // Compute all configured servers to be permanently active
-  const allServers = useMemo(() => {
-    if (startupConfig?.mcpServers) {
-      return Object.entries(startupConfig.mcpServers)
-        .filter(([, config]) => config.chatMenu !== false)
-        .map(([name]) => name)
-        .sort();
-    }
-    return [];
-  }, [startupConfig]);
-
-  // Permanently force the ephemeral agent to use ALL servers
+  // Sync Jotai state with ephemeral agent state
   useEffect(() => {
-    if (allServers.length > 0) {
-      setEphemeralAgent((prev) => {
-        // Prevent infinite re-renders by checking if it's already set correctly
-        const same =
-          prev?.mcp &&
-          prev.mcp.length === allServers.length &&
-          prev.mcp.slice().sort().every((v, i) => v === allServers[i]);
-
-        if (same) {
-          return prev;
-        }
-
-        return { ...(prev ?? {}), mcp: allServers };
-      });
+    const mcps = ephemeralAgent?.mcp ?? [];
+    if (mcps.length === 1 && mcps[0] === Constants.mcp_clear) {
+      setMCPValuesRaw([]);
+    } else if (mcps.length > 0) {
+      // Strip out servers that are not available in the startup config
+      const activeMcps = mcps.filter((mcp) => configuredServers.has(mcp));
+      setMCPValuesRaw(activeMcps);
     }
-  }, [allServers, setEphemeralAgent]);
+  }, [ephemeralAgent?.mcp, setMCPValuesRaw, configuredServers]);
 
-  /** Deliberately swallows clicks so servers can NEVER be unselected */
-  const setMCPValues = useCallback(() => {
-    // Locked on purpose
-  }, []);
+  useEffect(() => {
+    setEphemeralAgent((prev) => {
+      if (!isEqual(prev?.mcp, mcpValues)) {
+        return { ...(prev ?? {}), mcp: mcpValues };
+      }
+      return prev;
+    });
+  }, [mcpValues, setEphemeralAgent]);
+
+  useEffect(() => {
+    const mcpStorageKey = `${LocalStorageKeys.LAST_MCP_}${key}`;
+    if (mcpValues.length > 0) {
+      setTimestamp(mcpStorageKey);
+    }
+  }, [mcpValues, key]);
+
+  /** Stable memoized setter */
+  const setMCPValues = useCallback(
+    (value: string[]) => {
+      if (!Array.isArray(value)) {
+        return;
+      }
+      setMCPValuesRaw(value);
+    },
+    [setMCPValuesRaw],
+  );
 
   return {
     isPinned,
-    mcpValues: allServers,
-    
+    mcpValues,
     setIsPinned,
     setMCPValues,
   };
