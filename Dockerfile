@@ -27,8 +27,6 @@ ARG NODE_MAX_OLD_SPACE_SIZE=6144
 RUN mkdir -p /app && chown node:node /app
 WORKDIR /app
 
-USER node
-
 COPY --chown=node:node package.json package-lock.json ./
 COPY --chown=node:node api/package.json ./api/package.json
 COPY --chown=node:node client/package.json ./client/package.json
@@ -52,7 +50,11 @@ RUN \
     # React client build with configurable memory
     NODE_OPTIONS="--max-old-space-size=${NODE_MAX_OLD_SPACE_SIZE}" npm run frontend; \
     npm prune --production; \
-    npm cache clean --force
+    npm cache clean --force; \
+    # Fix permissions for built packages
+    chown -R node:node /app/packages/*/dist /app/client/dist
+
+USER node
 
 # Node API setup
 EXPOSE 3080

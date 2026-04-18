@@ -1,6 +1,7 @@
 import { useCallback, useMemo, memo } from 'react';
 import { useAtomValue } from 'jotai';
 import { useRecoilValue } from 'recoil';
+import { ContentTypes } from 'librechat-data-provider';
 import type { TMessage, TMessageContentParts } from 'librechat-data-provider';
 import type { TMessageProps, TMessageIcon } from '~/common';
 import { useAttachments, useLocalize, useMessageActions, useContentMetadata } from '~/hooks';
@@ -22,6 +23,41 @@ type ContentRenderProps = {
   TMessageProps,
   'currentEditId' | 'setCurrentEditId' | 'siblingIdx' | 'setSiblingIdx' | 'siblingCount'
 >;
+
+/**
+ * Extract all text content from message content parts
+ */
+const extractTextFromContent = (content: Array<TMessageContentParts | undefined> | undefined): string => {
+  if (!content || content.length === 0) {
+    return '';
+  }
+
+  const textParts: string[] = [];
+  
+  content.forEach((part) => {
+    if (!part) {
+      return;
+    }
+    
+    // Extract text from TEXT type content parts
+    if (part.type === ContentTypes.TEXT) {
+      const text = typeof part.text === 'string' ? part.text : part.text?.value;
+      if (typeof text === 'string' && text.trim()) {
+        textParts.push(text);
+      }
+    }
+    
+    // Extract reasoning from THINK type content parts
+    if (part.type === ContentTypes.THINK) {
+      const reasoning = typeof part.think === 'string' ? part.think : part.think?.value;
+      if (typeof reasoning === 'string' && reasoning.trim()) {
+        textParts.push(reasoning);
+      }
+    }
+  });
+
+  return textParts.join(' ');
+};
 
 const ContentRender = memo(
   ({
@@ -91,6 +127,9 @@ const ContentRender = memo(
     );
 
     const { hasParallelContent } = useContentMetadata(msg);
+
+    // Extract text content from message for follow-up suggestions
+    const messageText = useMemo(() => extractTextFromContent(msg?.content), [msg?.content]);
 
     if (!msg) {
       return null;
@@ -192,6 +231,9 @@ const ContentRender = memo(
                   messageId={msg.messageId}
                   isLatestMessage={isLatestMessage}
                   isCreatedByUser={msg.isCreatedByUser ?? false}
+                  messageText={messageText}
+                  parentMessageId={msg.parentMessageId}
+                  conversation={conversation}
                 />
               </>
             )}
