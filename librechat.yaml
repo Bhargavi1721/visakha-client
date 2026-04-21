@@ -130,7 +130,7 @@ endpoints:
   custom:
     - name: "vLLM"
       apiKey: "vllm"
-      baseURL: "http://100.100.108.29:8081/v1"
+      baseURL: "http://100.100.108.100:8081/v1"
       models:
         default: ['openai/gpt-oss-120b']
         fetch: true
