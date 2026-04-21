@@ -91,7 +91,7 @@ registration:
 
 mcpServers:
   faq-server:
-    url: http://100.100.108.42:9010/mcp
+    url: http://100.100.108.44:9010/mcp
     type: streamable-http
 
 
