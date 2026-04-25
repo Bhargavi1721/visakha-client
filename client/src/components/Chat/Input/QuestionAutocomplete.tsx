@@ -9,30 +9,6 @@ const SAKHA_QUESTIONS = [
   'What is the mode of this internship?',
   'Are there fixed timings for live sessions?',
   'Where can I find the Internship ID?',
-  'Can I preview the certificate template for non-NPTEL batches?',
-  'What is the Website link of Vinternship?',
-  'Can we opt for an on-campus/offline internship?',
-  'Is attendance tracked in this internship?',
-  'Do I need to use a specific name or email for the internship?',
-  'Will the course instructor supervise our work directly?',
-  'Do we get to meet our mentors?',
-  'Where should I check first for updates, instructions, or clarifications?',
-  'Where do I raise my concern initially?',
-  'What if I don\'t receive a response in 24 hours?',
-  'If my concern still isn\'t addressed, how do I escalate further?',
-  'Why is it important to follow the deadlines mentioned in tasks and milestones?',
-  'What happens if I miss a deadline?',
-  'Where can we find the Live session recordings?',
-  'What are the program completion criteria?',
-  'Where can I find information on certification?',
-  'Will recommendation letters be provided?',
-  'When will AKSians (NPTEL) cohort receive their offer letter?',
-  'When will AKSians (NPTEL) cohort receive their certificate of completion?',
-  'What is the expected pace of learning?',
-  'What happens if I don\'t maintain regular progress?',
-  'Can I appeal a discontinuation decision?',
-  'Can I rejoin the program after discontinuation?',
-  'How do I withdraw from the internship?',
   'How do I log in to ViBe?',
   'Invite accepted but shows "No course enrolled"?',
   'Why are videos stuck or repeating?',
@@ -55,24 +31,29 @@ const SAKHA_QUESTIONS = [
   'How many endorsements can I receive or give?',
   'When am I allowed to endorse someone?',
   'How do I access my Individual Health Points (HP) page?',
-  'Where can I find activity deadlines (ViBe / Case Study)?',
-  'When are Discord breakout rooms opened and who can join?',
-  'How will I know when the breakout rooms are active?',
-  'What is the purpose of the breakout rooms?',
-  'Why is my dashboard not updated yet?',
-  'My submission is missing in the dashboard. What should I do?',
-  'Dashboard is not loading at the moment. What should I do?',
-  'How to check my status on Dashboard?',
-  'Where can I find the application form?',
+  'Where should I check first for updates, instructions, or clarifications?',
+  'Where do I raise my concern initially?',
+  'What if I don\'t receive a response in 24 hours?',
+  'If my concern still isn\'t addressed, how do I escalate further?',
+  'What are the program completion criteria?',
+  'Where can I find information on certification?',
+  'Will recommendation letters be provided?',
+  'When will AKSians (NPTEL) cohort receive their offer letter?',
+  'When will AKSians (NPTEL) cohort receive their certificate of completion?',
   'Should we do the projects as a group or as an individual?',
   'How can we connect with the mentors?',
   'Is the project phase necessary for the completion of the Internship?',
+  'Where can I find the application form?',
 ];
 
 /**
  * QuestionAutocomplete Component
  * Provides inline ghost text suggestions (like GitHub Copilot)
- * Press TAB to accept the suggestion
+ * 
+ * Features:
+ * - FAQ-based suggestions matching user input
+ * - Smart word-based completion for partial inputs
+ * - Press TAB to accept the suggestion
  */
 function QuestionAutocomplete({
   textAreaRef,
@@ -84,18 +65,32 @@ function QuestionAutocomplete({
   const [currentText, setCurrentText] = useState('');
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Find matching suggestion based on current input
+  // Simple suggestion finder based on FAQ matching
   const findSuggestion = useCallback((inputValue: string) => {
     if (!inputValue.trim()) {
       return '';
     }
 
     const lowerInput = inputValue.toLowerCase();
-    const match = SAKHA_QUESTIONS.find((q) => q.toLowerCase().startsWith(lowerInput));
 
-    if (match) {
-      // Return only the remaining part of the suggestion
-      return match.slice(inputValue.length);
+    // Priority 1: Exact prefix match
+    const exactMatch = SAKHA_QUESTIONS.find((q) => q.toLowerCase().startsWith(lowerInput));
+    if (exactMatch) {
+      console.log('[Autocomplete] Exact match:', exactMatch);
+      return exactMatch.slice(inputValue.length);
+    }
+
+    // Priority 2: Smart partial word matching
+    if (inputValue.length >= 2) {
+      const wordMatch = SAKHA_QUESTIONS.find((q) => {
+        const words = q.toLowerCase().split(' ');
+        return words.some(word => word.startsWith(lowerInput));
+      });
+      
+      if (wordMatch) {
+        console.log('[Autocomplete] Word-based match:', wordMatch);
+        return wordMatch;
+      }
     }
 
     return '';
@@ -194,39 +189,57 @@ function QuestionAutocomplete({
 
   return (
     <div
-      className="pointer-events-none absolute inset-0 z-50"
+      className="pointer-events-none absolute inset-0"
       style={{
-        padding: '13px 20px',
-        fontSize: '14px',
-        fontFamily: 'inherit',
-        lineHeight: '1.5',
-        whiteSpace: 'pre-wrap',
-        wordWrap: 'break-word',
+        zIndex: 1,
         overflow: 'hidden',
-        display: 'flex',
-        alignItems: 'flex-start',
       }}
     >
-      {/* Container for text alignment */}
-      <div style={{ width: '100%', minHeight: '44px', display: 'flex', alignItems: 'center' }}>
-        {/* Invisible current text to push ghost text to correct position */}
+      <div
+        style={{
+          position: 'absolute',
+          top: '12px', // Match textarea padding-top
+          left: '16px', // Match textarea padding-left
+          right: '16px', // Match textarea padding-right
+          bottom: '12px', // Match textarea padding-bottom
+          fontSize: '14px',
+          fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif',
+          lineHeight: '1.5',
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+          display: 'flex',
+          alignItems: 'flex-start',
+        }}
+      >
+        {/* Invisible text to measure exact cursor position */}
         <span 
           style={{ 
-            color: 'transparent',
-            userSelect: 'none',
-            pointerEvents: 'none',
+            visibility: 'hidden',
+            fontSize: 'inherit',
+            fontFamily: 'inherit',
+            lineHeight: 'inherit',
+            whiteSpace: 'inherit',
+            wordBreak: 'inherit',
+            margin: 0,
+            padding: 0,
+            border: 0,
           }}
         >
           {currentText}
         </span>
-        {/* Visible ghost text */}
+        {/* Ghost text appears immediately after invisible text */}
         <span
           style={{
-            color: '#9ca3af',
+            color: '#6b7280',
             opacity: 0.7,
-            userSelect: 'none',
-            pointerEvents: 'none',
-            fontWeight: 'normal',
+            fontSize: 'inherit',
+            fontFamily: 'inherit',
+            lineHeight: 'inherit',
+            whiteSpace: 'inherit',
+            wordBreak: 'inherit',
+            margin: 0,
+            padding: 0,
+            border: 0,
           }}
         >
           {suggestion}

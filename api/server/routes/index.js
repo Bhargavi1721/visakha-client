@@ -23,6 +23,7 @@ const tags = require('./tags');
 const auth = require('./auth');
 const keys = require('./keys');
 const user = require('./user');
+const tools = require('./tools');
 const mcp = require('./mcp');
 
 module.exports = {
@@ -31,6 +32,7 @@ module.exports = {
   keys,
   user,
   tags,
+  tools,
   roles,
   oauth,
   files,

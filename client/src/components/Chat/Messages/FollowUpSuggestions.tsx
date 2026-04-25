@@ -27,23 +27,38 @@ const FollowUpSuggestions = memo(
 
     // Generate AI-powered contextual suggestions based on the USER'S question
     useEffect(() => {
+      console.log('[FollowUp] useEffect triggered with:', {
+        isCreatedByUser,
+        isLatestMessage,
+        parentMessageId,
+        messageId
+      });
+
       // Only show suggestions for AI responses (not user messages) and only for the latest message
       if (isCreatedByUser || !isLatestMessage) {
+        console.log('[FollowUp] Skipping - not AI response or not latest message');
         return;
       }
 
       // Get the user's question by finding the parent message
       const messages = getMessages();
+      console.log('[FollowUp] Got messages:', messages?.length || 0, 'messages');
+      
       if (!messages || !parentMessageId) {
+        console.log('[FollowUp] No messages or parentMessageId available');
         return;
       }
 
       const userQuestion = messages.find((msg) => msg.messageId === parentMessageId);
+      console.log('[FollowUp] Found user question:', userQuestion?.text || 'Not found');
+      
       if (!userQuestion || !userQuestion.text) {
+        console.log('[FollowUp] No user question text found');
         return;
       }
 
       const questionText = userQuestion.text;
+      console.log('[FollowUp] Calling generateAISuggestions with:', questionText);
       
       // Generate AI-powered suggestions
       generateAISuggestions(questionText);
@@ -53,63 +68,56 @@ const FollowUpSuggestions = memo(
       setIsLoading(true);
       
       try {
-        // Call Groq API to generate contextual follow-up questions
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        console.log('[FollowUp] Generating AI suggestions for:', userQuestion);
+        console.log('[FollowUp] Making API call to /api/tools/ai-suggestions');
+        
+        // Call our backend API endpoint instead of Groq directly
+        const response = await fetch('/api/tools/test-suggestions', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_GROQ_API_KEY || process.env.GROQ_API_KEY || ''}`,
           },
+          credentials: 'include', // Include cookies for authentication
           body: JSON.stringify({
-            model: 'llama-3.3-70b-versatile',
-            messages: [
-              {
-                role: 'system',
-                content: `You are a helpful assistant that generates relevant follow-up questions for Vicharanashala's Vinternship program.
-                
-Given a user's question about Vicharanashala/Vinternship, generate exactly 3 relevant follow-up questions that:
-1. Are directly related to the user's original question topic
-2. Help the user explore the topic deeper or related aspects
-3. Are specific to Vicharanashala topics: ViBe platform, case studies, endorsements, health points, projects, policies, support, certificates, etc.
-4. Are concise (under 15 words each)
-5. Are natural and conversational
-
-Return ONLY the 3 questions, one per line, without numbering or bullet points.`
-              },
-              {
-                role: 'user',
-                content: `User asked: "${userQuestion}"\n\nGenerate 3 relevant follow-up questions:`
-              }
-            ],
-            temperature: 0.7,
-            max_tokens: 200,
+            userQuestion: userQuestion,
           }),
         });
 
+        console.log('[FollowUp] API Response status:', response.status);
+        console.log('[FollowUp] API Response headers:', Object.fromEntries(response.headers.entries()));
+
         if (!response.ok) {
-          throw new Error('Failed to generate suggestions');
+          const errorData = await response.json().catch(() => ({ error: 'Failed to parse error response' }));
+          console.error('[FollowUp] API Error:', response.status, errorData);
+          
+          // If the API returns fallback suggestions, use them
+          if (errorData.suggestions && Array.isArray(errorData.suggestions)) {
+            console.log('[FollowUp] Using fallback suggestions from API error response');
+            setSuggestions(errorData.suggestions);
+            return;
+          }
+          
+          throw new Error(`API Error: ${response.status}`);
         }
 
         const data = await response.json();
-        const generatedText = data.choices[0]?.message?.content || '';
+        console.log('[FollowUp] API Response data:', data);
         
-        // Parse the response - split by newlines and filter empty lines
-        const generatedSuggestions = generatedText
-          .split('\n')
-          .map((line: string) => line.trim())
-          .filter((line: string) => line.length > 0 && !line.match(/^\d+[\.\)]/)) // Remove numbering if present
-          .slice(0, 3); // Take only first 3
-
-        if (generatedSuggestions.length > 0) {
-          console.log('AI-generated suggestions:', generatedSuggestions);
-          setSuggestions(generatedSuggestions);
+        if (data.suggestions && Array.isArray(data.suggestions) && data.suggestions.length > 0) {
+          console.log('[FollowUp] AI-generated suggestions:', data.suggestions);
+          setSuggestions(data.suggestions);
         } else {
-          // Fallback to generic suggestions if parsing fails
-          console.warn('Failed to parse AI suggestions, using fallback');
+          // Fallback to generic suggestions if no suggestions returned
+          console.warn('[FollowUp] No suggestions returned from API, using fallback');
           useFallbackSuggestions(userQuestion);
         }
       } catch (error) {
-        console.error('Error generating AI suggestions:', error);
+        console.error('[FollowUp] Error generating AI suggestions:', error);
+        console.error('[FollowUp] Error details:', {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        });
         // Use fallback keyword-based suggestions on error
         useFallbackSuggestions(userQuestion);
       } finally {
