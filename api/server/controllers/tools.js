@@ -245,8 +245,151 @@ const getToolCalls = async (req, res) => {
   }
 };
 
+/**
+ * Generate AI-powered follow-up suggestions using Groq API with highest probability ranking
+ * @param {ServerRequest} req - The request object
+ * @param {ServerResponse} res - The response object
+ * @returns {Promise<void>} A promise that resolves when the function has completed
+ */
+const generateAISuggestions = async (req, res) => {
+  try {
+    logger.debug('[AI Suggestions] Request received from user:', req.user?.id || 'unknown');
+    logger.debug('[AI Suggestions] Request body:', req.body);
+    
+    const { userQuestion, aiResponse } = req.body;
+    
+    if (!userQuestion || typeof userQuestion !== 'string') {
+      logger.warn('[AI Suggestions] Invalid user question:', userQuestion);
+      return res.status(400).json({ 
+        error: 'User question is required'
+      });
+    }
+
+    const groqApiKey = process.env.GROQ_API_KEY;
+    if (!groqApiKey) {
+      logger.error('[AI Suggestions] GROQ_API_KEY not configured - AI suggestions unavailable');
+      return res.status(500).json({
+        error: 'AI service unavailable - API key not configured'
+      });
+    }
+
+    logger.debug(`[AI Suggestions] Generating for question: ${userQuestion}`);
+
+    // Enhanced prompt for highest probability suggestions
+    const systemPrompt = `You are an expert AI assistant that generates the most likely and valuable follow-up questions based on conversation context.
+
+TASK: Analyze the user's question and AI response to generate exactly 3 follow-up questions that users are MOST LIKELY to ask next.
+
+RANKING CRITERIA (highest probability first):
+1. Direct clarification questions about unclear points in the AI response
+2. Questions about practical implementation or next steps
+3. Questions about related topics mentioned but not fully explained
+4. Questions about specific examples or use cases
+5. Questions about potential problems or limitations
+
+CONTEXT: Vicharanashala's Vinternship program including ViBe platform, case studies, endorsements, health points, projects, policies, support, certificates.
+
+REQUIREMENTS:
+- Each question must be under 12 words
+- Questions should feel natural and conversational
+- Rank by highest probability of being asked
+- Focus on what users typically want to know next
+- Avoid generic questions
+
+Return ONLY the 3 questions, one per line, in order of highest to lowest probability.`;
+
+    const userPrompt = aiResponse 
+      ? `User asked: "${userQuestion}"\n\nAI responded: "${aiResponse.substring(0, 500)}..."\n\nGenerate 3 most likely follow-up questions:`
+      : `User asked: "${userQuestion}"\n\nGenerate 3 most likely follow-up questions:`;
+
+    // Call Groq API with enhanced parameters for better probability ranking
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${groqApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          {
+            role: 'system',
+            content: systemPrompt
+          },
+          {
+            role: 'user',
+            content: userPrompt
+          }
+        ],
+        temperature: 0.3, // Lower temperature for more consistent, probable suggestions
+        max_tokens: 150,
+        top_p: 0.9, // Focus on highest probability tokens
+        frequency_penalty: 0.2, // Reduce repetition
+        presence_penalty: 0.1, // Encourage diverse topics
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error(`[AI Suggestions] Groq API Error: ${response.status} - ${errorText}`);
+      return res.status(500).json({
+        error: `AI service error: ${response.status}`
+      });
+    }
+
+    const data = await response.json();
+    const generatedText = data.choices[0]?.message?.content || '';
+    
+    // Parse and validate the response
+    const generatedSuggestions = generatedText
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0 && !line.match(/^\d+[\.\)]/)) // Remove numbering if present
+      .filter((line) => line.length <= 80 && line.includes('?')) // Ensure they're questions under 80 chars
+      .slice(0, 3); // Take only first 3
+
+    if (generatedSuggestions.length >= 3) {
+      logger.debug(`[AI Suggestions] Generated high-probability suggestions: ${generatedSuggestions.join(', ')}`);
+      return res.status(200).json({
+        suggestions: generatedSuggestions,
+        source: 'ai-generated'
+      });
+    } else if (generatedSuggestions.length > 0) {
+      // If we got some but not enough, pad with generic but contextual ones
+      const contextualFallbacks = [
+        'Can you provide more specific examples?',
+        'What are the key steps to get started?',
+        'How does this compare to other options?'
+      ];
+      
+      const finalSuggestions = [
+        ...generatedSuggestions,
+        ...contextualFallbacks.slice(0, 3 - generatedSuggestions.length)
+      ];
+      
+      logger.debug(`[AI Suggestions] Partial AI generation, padded with contextual fallbacks: ${finalSuggestions.join(', ')}`);
+      return res.status(200).json({
+        suggestions: finalSuggestions,
+        source: 'ai-partial'
+      });
+    } else {
+      // If AI generation completely failed, return error instead of fallbacks
+      logger.error('[AI Suggestions] AI generation failed - no valid suggestions generated');
+      return res.status(500).json({
+        error: 'Failed to generate AI suggestions'
+      });
+    }
+  } catch (error) {
+    logger.error('[AI Suggestions] Error generating suggestions:', error);
+    return res.status(500).json({
+      error: 'AI suggestion service temporarily unavailable'
+    });
+  }
+};
+
 module.exports = {
   callTool,
   getToolCalls,
   verifyToolAuth,
+  generateAISuggestions,
 };
